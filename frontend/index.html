@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Delhi Police Command Center • Stolen Vehicle AI Tracking & Route Reconstruction</title>
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Font Awesome 6.4.0 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <!-- Leaflet 1.9.4 CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+
+  <!-- Police Command Dashboard Custom Styles -->
+  <link rel="stylesheet" href="/static/css/dashboard.css" />
+</head>
+<body>
+  <div id="app-container">
+    <!-- ====================================================================
+         1. COMMAND HEADER & TELEMETRY KPI BAR
+         ==================================================================== -->
+    <header class="command-header">
+      <div class="brand-section">
+        <div class="police-badge-emblem" title="Delhi Police Cyber & Surveillance Command">
+          <i class="fa-solid fa-shield-halved"></i>
+        </div>
+        <div class="brand-title">
+          <h1>
+            Delhi Police Command Center
+            <span class="subhead">STOLEN VEHICLE AI RADAR</span>
+          </h1>
+          <span class="system-tagline">
+            Automated ANPR &bull; Deep Visual Re-ID Fingerprinting &bull; Spatio-Temporal Route Trajectory
+          </span>
+        </div>
+      </div>
+
+      <!-- Real-Time Telemetry KPI Strip -->
+      <div class="header-kpi-bar">
+        <div class="kpi-chip highlight-blue" title="Active Stolen Vehicle Investigations">
+          <span class="kpi-label">Active Cases</span>
+          <span class="kpi-value" id="kpi-active-cases">--</span>
+        </div>
+        <div class="kpi-chip" title="Online CCTV Corridor Nodes">
+          <span class="kpi-label">Cameras Online</span>
+          <span class="kpi-value" id="kpi-cameras-online">--/--</span>
+        </div>
+        <div class="kpi-chip" title="Total Vehicle Detections Captured Today">
+          <span class="kpi-label">Detections Today</span>
+          <span class="kpi-value" id="kpi-detections-today">--</span>
+        </div>
+        <div class="kpi-chip highlight-amber" title="Automated Candidate Matches Identified">
+          <span class="kpi-label">Matches Found</span>
+          <span class="kpi-value" id="kpi-matches-today">--</span>
+        </div>
+        <div class="kpi-chip highlight-emerald" title="Vehicle Recovery Success Metric">
+          <span class="kpi-label">Recovery Rate</span>
+          <span class="kpi-value" id="kpi-recovery-rate">--%</span>
+        </div>
+      </div>
+
+      <!-- Header Actions: Clock, Officer Badge, Quick Trigger Buttons -->
+      <div class="header-actions">
+        <div class="live-clock-badge" title="Live Tactical Clock">
+          <span class="pulse-dot"></span>
+          <span id="live-clock-text">--:--:-- IST</span>
+        </div>
+
+        <div class="officer-badge" title="Active Authenticated Duty Officer">
+          <i class="fa-solid fa-user-shield"></i>
+          <span>Insp. Rajesh Kumar (Badge #DL-4821)</span>
+        </div>
+
+        <button id="btn-open-new-fir-modal" class="btn btn-primary" title="Register New FIR Incident Report">
+          <i class="fa-solid fa-plus"></i> New FIR Alert
+        </button>
+
+        <button id="btn-open-search-modal" class="btn btn-secondary" title="Search All Captured Sightings">
+          <i class="fa-solid fa-magnifying-glass"></i> Search
+        </button>
+      </div>
+    </header>
+
+    <!-- ====================================================================
+         2. QUICK SEARCH & ACTIVE CASE SELECTOR BAR
+         ==================================================================== -->
+    <div class="quick-search-bar">
+      <!-- Quick Search Form -->
+      <form id="quick-search-form" class="search-input-group" style="margin-right: 12px;">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="quick-search-input" placeholder="Quick Search by Plate (e.g. MH12AB1234), FIR Number, or Vehicle Details..." autocomplete="off" />
+        <button type="submit" class="btn btn-primary btn-sm" style="margin-left: 8px;">Find</button>
+      </form>
+
+      <!-- Fast Filter Category Pills -->
+      <div class="quick-filter-pills">
+        <span class="filter-pill" data-filter-type="type" data-filter-value="car"><i class="fa-solid fa-car"></i> Cars</span>
+        <span class="filter-pill" data-filter-type="type" data-filter-value="motorcycle"><i class="fa-solid fa-motorcycle"></i> Two-Wheelers</span>
+        <span class="filter-pill" data-filter-type="type" data-filter-value="auto_rickshaw"><i class="fa-solid fa-truck-pickup"></i> Autos</span>
+        <span class="filter-pill" data-filter-type="color" data-filter-value="white"><i class="fa-solid fa-circle" style="color: #fff;"></i> White</span>
+        <span class="filter-pill" data-filter-type="color" data-filter-value="red"><i class="fa-solid fa-circle" style="color: #ef4444;"></i> Red</span>
+        <span class="filter-pill" data-filter-type="color" data-filter-value="black"><i class="fa-solid fa-circle" style="color: #64748b;"></i> Black</span>
+      </div>
+
+      <!-- Active Case Switcher Dropdown -->
+      <div class="case-selector-group">
+        <label for="case-select-dropdown" style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
+          <i class="fa-solid fa-folder-open" style="color: var(--police-blue-light);"></i> Active Case:
+        </label>
+        <select id="case-select-dropdown" class="case-select-dropdown">
+          <option value="">Loading Stolen Vehicle Cases...</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ====================================================================
+         VIEW MODE TABS
+         ==================================================================== -->
+    <div class="view-mode-tabs">
+      <button class="view-tab active" data-view="map" title="GIS Map & Route Tracking">
+        <i class="fa-solid fa-map-location-dot"></i> Map View
+      </button>
+      <button class="view-tab" data-view="cameras" title="Multi-Camera Surveillance Grid">
+        <i class="fa-solid fa-grip"></i> Camera Grid
+      </button>
+      <button class="view-tab" data-view="split" title="Split View: Map + Cameras">
+        <i class="fa-solid fa-table-columns"></i> Split View
+      </button>
+    </div>
+
+    <!-- ====================================================================
+         3. MAIN TACTICAL WORKSPACE
+         ==================================================================== -->
+    <main class="main-workspace">
+
+      <!-- LEFT COLUMN: INTERACTIVE LEAFLET GIS MAP -->
+      <section class="map-viewport" id="map-viewport-section" aria-label="Surveillance Map">
+        <div id="map"></div>
+
+        <!-- Floating Map Overlay Controls -->
+        <div class="map-floating-controls">
+          <!-- Basemap Selector & Fit Bounds -->
+          <div class="glass-panel" style="display: flex; gap: 8px; align-items: center;">
+            <div class="map-control-btn-group">
+              <button id="btn-base-dark" class="map-btn map-base-btn active" title="CartoDB Dark Basemap">
+                <i class="fa-solid fa-moon"></i>
+              </button>
+              <button id="btn-base-satellite" class="map-btn map-base-btn" title="Satellite Imagery">
+                <i class="fa-solid fa-earth-americas"></i>
+              </button>
+              <button id="btn-base-streets" class="map-btn map-base-btn" title="OpenStreetMaps Basemap">
+                <i class="fa-solid fa-map"></i>
+              </button>
+            </div>
+            <div style="width: 1px; height: 20px; background: var(--border-strong);"></div>
+            <button id="btn-map-fit-bounds" class="map-btn" title="Zoom & Fit Active Pursuit Route">
+              <i class="fa-solid fa-expand"></i>
+            </button>
+          </div>
+
+          <!-- Layer Visibility Toggles -->
+          <div class="glass-panel map-layer-toggles">
+            <label>
+              <input type="checkbox" id="toggle-cameras" checked />
+              <span><i class="fa-solid fa-video" style="color: #38bdf8;"></i> CCTV Camera Nodes (6)</span>
+            </label>
+            <label>
+              <input type="checkbox" id="toggle-waypoints" checked />
+              <span><i class="fa-solid fa-location-crosshairs" style="color: var(--amber-gold);"></i> Detection Waypoints</span>
+            </label>
+            <label>
+              <input type="checkbox" id="toggle-route" checked />
+              <span><i class="fa-solid fa-route" style="color: var(--police-blue-light);"></i> Directional Trajectory</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Bottom Legend Overlay -->
+        <div class="map-legend-overlay glass-panel">
+          <div class="legend-item">
+            <span class="legend-color-dot legend-camera"></span>
+            <span>CCTV Node</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color-dot legend-verified"></span>
+            <span>Verified Match</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color-dot legend-pending"></span>
+            <span>Pending Review</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color-dot legend-rejected"></span>
+            <span>Rejected</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color-dot legend-route"></span>
+            <span>Feasible Route (<=120 km/h)</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- CAMERA SURVEILLANCE GRID (FBI-style multi-feed view) -->
+      <section class="camera-grid-viewport" id="camera-grid-section" style="display: none;" aria-label="Camera Surveillance Grid">
+        <div class="camera-grid" id="camera-grid">
+          <!-- Populated dynamically by JS -->
+        </div>
+      </section>
+
+      <!-- RIGHT COLUMN: INVESTIGATION SIDEBAR & TIMELINE -->
+      <aside class="investigation-sidebar" aria-label="Investigation Details">
+        <!-- 1. Active Case Details Header Card -->
+        <div class="case-summary-card">
+          <div class="case-header-top">
+            <div class="case-id-badge">
+              <span class="case-fir-num">
+                <i class="fa-solid fa-file-lines" style="color: var(--police-blue-light);"></i>
+                <span id="case-fir-display">FIR-2026-DEL-0941</span>
+              </span>
+              <div>
+                <span id="case-plate-display" class="case-vehicle-plate">MH12AB1234</span>
+              </div>
+            </div>
+            <span id="case-status-badge" class="status-badge status-tracking">TRACKING</span>
+          </div>
+
+          <!-- Case Metadata Grid -->
+          <div class="case-meta-grid">
+            <div class="case-meta-item">
+              <span class="label">Target Vehicle</span>
+              <span class="value" id="case-vehicle-meta">White Hyundai Creta (Car)</span>
+            </div>
+            <div class="case-meta-item">
+              <span class="label">Theft Incident Origin</span>
+              <span class="value" id="case-theft-location">Radial Road 1, Connaught Place</span>
+            </div>
+            <div class="case-meta-item">
+              <span class="label">Lead Officer</span>
+              <span class="value" id="case-officer-meta">Insp. Rajesh Kumar (DL-4821)</span>
+            </div>
+            <div class="case-meta-item">
+              <span class="label">Distinctive Features</span>
+              <span class="value" id="case-features-meta">Black roof wrap, left rear dent</span>
+            </div>
+          </div>
+
+          <!-- Action Toolbar -->
+          <div class="case-action-toolbar">
+            <button id="btn-export-dossier" class="btn btn-emerald btn-sm" style="flex: 1;">
+              <i class="fa-solid fa-file-shield"></i> Section 65B Dossier
+            </button>
+            <button id="btn-refresh-route" class="btn btn-secondary btn-sm" title="Refresh Sighting Trajectory">
+              <i class="fa-solid fa-arrows-rotate"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Reconstructed Route Trajectory KPI Summary Strip -->
+        <div class="route-summary-strip">
+          <div class="route-stat">
+            <span class="stat-label">Total Distance</span>
+            <span class="stat-value" id="route-stat-distance">-- km</span>
+          </div>
+          <div class="route-stat">
+            <span class="stat-label">Est. Duration</span>
+            <span class="stat-value" id="route-stat-duration">-- min</span>
+          </div>
+          <div class="route-stat">
+            <span class="stat-label">Tracked Nodes</span>
+            <span class="stat-value" id="route-stat-waypoints">--</span>
+          </div>
+          <div class="route-stat">
+            <span class="stat-label">Feasibility</span>
+            <span class="stat-value" id="route-stat-status" style="color: var(--emerald-green);">Passed</span>
+          </div>
+        </div>
+
+        <!-- 3. Chronological Sighting Stream -->
+        <section class="timeline-section">
+          <div class="timeline-header">
+            <h3>
+              <i class="fa-solid fa-timeline"></i>
+              Chronological Sighting Stream
+            </h3>
+            <span style="font-size: 11px; color: var(--text-muted);">Real-time ANPR / Re-ID Feed</span>
+          </div>
+          <div class="timeline-scroll-container" id="timeline-container">
+            <!-- Dynamically populated by TimelineView.renderTimeline() -->
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <!-- ====================================================================
+         4. MODAL DIALOGS
+         ==================================================================== -->
+
+    <!-- MODAL 1: REGISTER NEW FIR / STOLEN VEHICLE -->
+    <div id="fir-modal" class="modal-backdrop" role="dialog" aria-modal="true">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h2><i class="fa-solid fa-file-circle-plus"></i> Register Stolen Vehicle FIR Alert</h2>
+          <button class="modal-close-btn modal-close-trigger" aria-label="Close">&times;</button>
+        </div>
+        <form id="new-fir-form">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="form-label">FIR Incident Number *</label>
+                <input type="text" id="fir-number-input" class="form-control font-mono" placeholder="FIR-2026-DEL-1042" required />
+                <span class="form-help">Format: FIR-YYYY-STATION-####</span>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Reported License Plate *</label>
+                <input type="text" id="fir-plate-input" class="form-control font-mono" placeholder="MH12AB1234" required />
+                <span class="form-help">Indian Standard HSRP Format</span>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Vehicle Category *</label>
+                <select id="fir-type-input" class="form-control" required>
+                  <option value="car">Car / SUV / Sedan</option>
+                  <option value="motorcycle">Motorcycle / Bike</option>
+                  <option value="scooter">Scooter</option>
+                  <option value="auto_rickshaw">Auto-Rickshaw</option>
+                  <option value="bus">Bus</option>
+                  <option value="truck">Truck / Commercial</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Vehicle Primary Color *</label>
+                <select id="fir-color-input" class="form-control" required>
+                  <option value="white">White</option>
+                  <option value="black">Black</option>
+                  <option value="silver">Silver / Grey</option>
+                  <option value="red">Red</option>
+                  <option value="blue">Blue</option>
+                  <option value="yellow">Yellow</option>
+                  <option value="green">Green</option>
+                  <option value="brown">Brown</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Manufacturer Make</label>
+                <input type="text" id="fir-make-input" class="form-control" placeholder="e.g. Hyundai, Maruti, Tata" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Model Name</label>
+                <input type="text" id="fir-model-input" class="form-control" placeholder="e.g. Creta, Swift, Nexon" />
+              </div>
+
+              <div class="form-group full-width">
+                <label class="form-label">Distinctive Fingerprint Features (Roof racks, stickers, dents)</label>
+                <input type="text" id="fir-features-input" class="form-control" placeholder="e.g. Black roof wrap, dent on left rear bumper, aftermarket spoiler" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Theft Date & Time *</label>
+                <input type="datetime-local" id="fir-theft-time-input" class="form-control" required />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Theft Location Name *</label>
+                <input type="text" id="fir-theft-location-input" class="form-control" placeholder="e.g. Radial Road 1, Connaught Place" required />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Theft Latitude (GPS)</label>
+                <input type="number" step="0.0001" id="fir-theft-lat-input" class="form-control font-mono" value="28.6315" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Theft Longitude (GPS)</label>
+                <input type="number" step="0.0001" id="fir-theft-lon-input" class="form-control font-mono" value="77.2167" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Investigating Officer</label>
+                <input type="text" id="fir-officer-input" class="form-control" value="Inspector Rajesh Kumar (DL-4821)" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Police Station Jurisdiction</label>
+                <input type="text" id="fir-station-input" class="form-control" value="Parliament Street Police Station" />
+              </div>
+
+              <!-- Reference Image Upload Dropzone -->
+              <div class="form-group full-width">
+                <label class="form-label">Reference Photograph of Stolen Vehicle (for Deep Re-ID Matching)</label>
+                <div class="form-file-dropzone" id="fir-photo-preview" onclick="document.getElementById('fir-photo-input').click()">
+                  <i class="fa-solid fa-cloud-arrow-up" style="font-size: 24px; color: #64748b;"></i>
+                  <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Click or drag vehicle reference photograph (JPEG/PNG)</div>
+                </div>
+                <input type="file" id="fir-photo-input" accept="image/*" style="display: none;" />
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary modal-close-trigger">Cancel</button>
+            <button type="submit" class="btn btn-primary">
+              <i class="fa-solid fa-radar"></i> Ingest Alert & Search Corridor
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL 2: ADVANCED MULTI-MODAL SIGHTING SEARCH -->
+    <div id="search-modal" class="modal-backdrop" role="dialog" aria-modal="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+          <h2><i class="fa-solid fa-magnifying-glass-location"></i> Multi-Modal Sighting Search</h2>
+          <button class="modal-close-btn modal-close-trigger" aria-label="Close">&times;</button>
+        </div>
+        <form id="advanced-search-form">
+          <div class="modal-body">
+            <div class="form-grid" style="margin-bottom: 16px;">
+              <div class="form-group">
+                <label class="form-label">License Plate (or Substring)</label>
+                <input type="text" id="search-plate-input" class="form-control font-mono" placeholder="e.g. MH12, DL01, 1234" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Vehicle Category</label>
+                <select id="search-type-input" class="form-control">
+                  <option value="">All Categories</option>
+                  <option value="car">Car</option>
+                  <option value="motorcycle">Motorcycle</option>
+                  <option value="auto_rickshaw">Auto-Rickshaw</option>
+                  <option value="bus">Bus</option>
+                  <option value="truck">Truck</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Vehicle Color</label>
+                <select id="search-color-input" class="form-control">
+                  <option value="">All Colors</option>
+                  <option value="white">White</option>
+                  <option value="black">Black</option>
+                  <option value="silver">Silver</option>
+                  <option value="red">Red</option>
+                  <option value="blue">Blue</option>
+                  <option value="yellow">Yellow</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">CCTV Surveillance Node</label>
+                <select id="search-camera-filter" class="form-control">
+                  <option value="">All Surveillance Nodes (Delhi NCR)</option>
+                </select>
+              </div>
+
+              <div class="form-group full-width">
+                <label class="form-label">Minimum ANPR OCR Confidence Threshold: <span id="conf-slider-val" style="color: #38bdf8;">50%</span></label>
+                <input type="range" id="search-conf-slider" min="0" max="100" value="50" class="form-control" oninput="document.getElementById('conf-slider-val').innerText = this.value + '%'" />
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 16px;">
+              <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-filter"></i> Execute Multi-Filter Query
+              </button>
+            </div>
+
+            <!-- Search Results Display Area -->
+            <div id="search-results-list" style="max-height: 280px; overflow-y: auto;">
+              <div style="text-align: center; color: var(--text-muted); padding: 30px;">
+                Enter search parameters above and click "Execute Multi-Filter Query".
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary modal-close-trigger">Close</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL 3: SECTION 65B COURT EVIDENCE DOSSIER -->
+    <div id="evidence-modal" class="modal-backdrop" role="dialog" aria-modal="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+          <h2><i class="fa-solid fa-gavel"></i> Section 65B Electronic Evidence Dossier</h2>
+          <button class="modal-close-btn modal-close-trigger" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body" id="evidence-modal-content">
+          <!-- Populated dynamically by EvidenceExport.renderDossier() -->
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary modal-close-trigger">Close</button>
+          <button type="button" class="btn btn-secondary" id="btn-download-evidence-json">
+            <i class="fa-solid fa-download"></i> Download JSON Package
+          </button>
+          <button type="button" class="btn btn-emerald" id="btn-print-evidence">
+            <i class="fa-solid fa-print"></i> Print Court Dossier (PDF)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+  </div>
+
+  <!-- Leaflet 1.9.4 JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <!-- Police Command Center Modular Scripts -->
+  <script src="/static/js/map_view.js"></script>
+  <script src="/static/js/timeline_view.js"></script>
+  <script src="/static/js/evidence_export.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

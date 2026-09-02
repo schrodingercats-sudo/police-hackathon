@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+venv/
+.venv/
+env/
+
+# Data & Evidence (generated at runtime)
+data/evidence/
+*.db
+*.sqlite3
+
+# Models (downloaded at runtime)
+*.pth
+*.pt
+*.onnx
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Test artifacts
+anpr_test*.json
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Environment
+.env
+.env.local

@@ -1,0 +1,65 @@
+"""Application Configuration & Settings for Indian Police Stolen Vehicle AI System."""
+
+import os
+from pathlib import Path
+from typing import List, Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Core application settings with environment variable overrides."""
+
+    # Project metadata
+    PROJECT_NAME: str = "Indian Police Stolen Vehicle AI Command Center"
+    VERSION: str = "1.0.0"
+    API_PREFIX: str = "/api"
+    DEBUG: bool = False
+
+    # Server configuration
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+    CORS_ORIGINS: List[str] = ["*"]
+
+    # Database configuration
+    # Default to local SQLite database; can be overridden via DATABASE_URL env var
+    # (e.g. postgresql://user:pass@localhost:5432/stolen_vehicle_db)
+    DATABASE_URL: str = "sqlite:///./stolen_vehicle_ai.db"
+    DB_ECHO: bool = False
+
+    # Directory Paths
+    BASE_DIR: Path = Path(__file__).resolve().parent.parent
+    DATA_DIR: Path = BASE_DIR / "data"
+    EVIDENCE_DIR: Path = DATA_DIR / "evidence"
+    CAMERA_DATA_DIR: Path = DATA_DIR / "cameras"
+    SYNTHETIC_FEEDS_DIR: Path = DATA_DIR / "synthetic_feeds"
+
+    # Spatio-Temporal & Matching Engine Parameters
+    MAX_SPEED_KMH: float = 120.0  # Max realistic speed for spatio-temporal feasibility
+    MIN_PLATE_CONFIDENCE: float = 0.50  # Minimum confidence threshold for OCR
+    DEFAULT_WEIGHT_PLATE: float = 0.50
+    DEFAULT_WEIGHT_REID: float = 0.35
+    DEFAULT_WEIGHT_ATTR: float = 0.15
+
+    # OCR Confusion Penalties
+    OCR_SUBSTITUTION_PENALTY: float = 0.30  # Reduced penalty for known OCR confusions (e.g. 0/O, 1/I)
+    OCR_DEFAULT_MISMATCH_PENALTY: float = 1.0
+
+    # Evidence & Forensic Compliance
+    SECTION_65B_HASH_ALGORITHM: str = "sha256"
+    SYSTEM_SALT: str = "delhi-police-cctns-sighting-v1"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="allow",
+    )
+
+
+settings = Settings()
+
+# Ensure required storage directories exist
+os.makedirs(settings.DATA_DIR, exist_ok=True)
+os.makedirs(settings.EVIDENCE_DIR, exist_ok=True)
+os.makedirs(settings.CAMERA_DATA_DIR, exist_ok=True)
+os.makedirs(settings.SYNTHETIC_FEEDS_DIR, exist_ok=True)
