@@ -27,13 +27,15 @@ class Settings(BaseSettings):
 
     # Database configuration
     # Default to local SQLite database; can be overridden via DATABASE_URL env var
-    # (e.g. postgresql://user:pass@localhost:5432/stolen_vehicle_db)
-    DATABASE_URL: str = "sqlite:///./stolen_vehicle_ai.db"
+    DATABASE_URL: str = os.environ.get(
+        "DATABASE_URL",
+        "sqlite:////tmp/stolen_vehicle_ai.db" if os.environ.get("VERCEL") else "sqlite:///./stolen_vehicle_ai.db",
+    )
     DB_ECHO: bool = False
 
     # Directory Paths
     BASE_DIR: Path = Path(__file__).resolve().parent.parent
-    DATA_DIR: Path = BASE_DIR / "data"
+    DATA_DIR: Path = Path("/tmp/data") if os.environ.get("VERCEL") else BASE_DIR / "data"
     EVIDENCE_DIR: Path = DATA_DIR / "evidence"
     CAMERA_DATA_DIR: Path = DATA_DIR / "cameras"
     SYNTHETIC_FEEDS_DIR: Path = DATA_DIR / "synthetic_feeds"
@@ -48,6 +50,11 @@ class Settings(BaseSettings):
     # OCR Confusion Penalties
     OCR_SUBSTITUTION_PENALTY: float = 0.30  # Reduced penalty for known OCR confusions (e.g. 0/O, 1/I)
     OCR_DEFAULT_MISMATCH_PENALTY: float = 1.0
+    CONFUSION_PENALTY_WEIGHT: float = 0.10
+
+    # Human-in-the-Loop Thresholds
+    CONFIRMATION_THRESHOLD: float = 0.85
+    MANUAL_REVIEW_THRESHOLD: float = 0.60
 
     # Evidence & Forensic Compliance
     SECTION_65B_HASH_ALGORITHM: str = "sha256"
@@ -68,7 +75,8 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # Ensure required storage directories exist
-os.makedirs(settings.DATA_DIR, exist_ok=True)
-os.makedirs(settings.EVIDENCE_DIR, exist_ok=True)
-os.makedirs(settings.CAMERA_DATA_DIR, exist_ok=True)
-os.makedirs(settings.SYNTHETIC_FEEDS_DIR, exist_ok=True)
+for directory in [settings.DATA_DIR, settings.EVIDENCE_DIR, settings.CAMERA_DATA_DIR, settings.SYNTHETIC_FEEDS_DIR]:
+    try:
+        os.makedirs(directory, exist_ok=True)
+    except OSError:
+        pass

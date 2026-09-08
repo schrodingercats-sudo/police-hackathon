@@ -43,3 +43,5 @@ htmlcov/
 # Environment
 .env
 .env.local
+
+.vercel

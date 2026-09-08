@@ -20,10 +20,10 @@ pillow>=10.2.0
 scipy>=1.11.0
 python-dateutil>=2.8.2
 
-# Optional heavy deep learning engines (exceeds Vercel 500MB serverless limit; see requirements-full.txt)
-# ultralytics>=8.1.0
-# easyocr>=1.7.0
-# pytesseract>=0.3.10
+# Deep Learning, YOLOv8 Vehicle Detection & OCR Recognition Engines (Local / GPU / Docker)
+ultralytics>=8.1.0
+easyocr>=1.7.0
+pytesseract>=0.3.10
 
 # Testing & Quality Assurance
 pytest>=8.0.0

@@ -89,6 +89,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -101,8 +102,10 @@ app.add_middleware(AuditLoggingMiddleware)
 # Static Media & Web Assets Mounting
 # -----------------------------------------------------------------------------
 evidence_path = settings.EVIDENCE_DIR
-if not evidence_path.exists():
+try:
     os.makedirs(evidence_path, exist_ok=True)
+except OSError:
+    pass
 app.mount("/evidence", StaticFiles(directory=str(evidence_path)), name="evidence")
 # Also mount at /data/evidence since mock_stream stores DB paths like /data/evidence/crops/...
 app.mount("/data/evidence", StaticFiles(directory=str(evidence_path)), name="evidence_data")
