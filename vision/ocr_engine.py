@@ -239,12 +239,18 @@ class OCREngine:
         if num_holes >= 2:
             return "8" if (q_tl + q_tr) > 0.6 else "B"
         elif num_holes == 1:
-            if q_tl > 0.4 and q_tr > 0.4 and q_bl > 0.4 and q_br > 0.4:
+            if q_tl > 0.35 and q_tr > 0.35 and q_bl > 0.35 and q_br > 0.35:
                 return "0"
-            elif q_bl > 0.4 and q_br < 0.2:
+            elif q_bl > 0.4 and q_br < 0.25:
                 return "P"
-            elif q_tl > 0.4 and q_tr > 0.4 and q_bl < 0.3:
+            elif q_tl > 0.35 and q_tr > 0.35 and q_bl < 0.3:
                 return "A"
+            elif (q_bl + q_br) > (q_tl + q_tr) * 1.3:
+                return "6"
+            elif (q_tl + q_tr) > (q_bl + q_br) * 1.3:
+                return "9" if q_tr > 0.3 else "4"
+            elif q_br > 0.25 and q_tl > 0.3:
+                return "R"
             else:
                 return "D"
         else:
@@ -252,9 +258,15 @@ class OCREngine:
             if q_mid < 0.15:
                 return "H" if (q_tl > 0.3 and q_tr > 0.3) else "C"
             if (q_tl + q_tr) > (q_bl + q_br) * 1.5:
-                return "T"
+                return "7" if q_tr > q_tl * 1.2 else "T"
             if (q_bl + q_br) > (q_tl + q_tr) * 1.5:
-                return "L"
-            if q_tl > 0.4 and q_br > 0.4 and q_tr < 0.3 and q_bl < 0.3:
+                return "L" if q_bl > q_br else "J"
+            if q_tl > 0.35 and q_br > 0.35 and q_tr < 0.3 and q_bl < 0.3:
                 return "Z"
+            if q_tl > 0.35 and q_bl > 0.35 and q_mid > 0.25:
+                return "E" if q_tr > 0.25 else "F"
+            if q_tr > 0.35 and q_bl > 0.35 and q_tl < 0.3 and q_br < 0.3:
+                return "S"
+            if q_bl > 0.3 and q_br > 0.3 and q_tl < 0.25 and q_tr < 0.25:
+                return "U"
             return "M" if q_tl > 0.4 and q_tr > 0.4 else "X"

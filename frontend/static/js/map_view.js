@@ -51,7 +51,8 @@ const MapView = (function () {
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       {
         maxZoom: 18,
-        attribution: '&copy; Esri &copy; DigitalGlobe'
+        attribution: '&copy; Esri &copy; DigitalGlobe',
+        errorTileUrl: 'https://tile.openstreetmap.org/1/0/0.png'
       }
     );
 

@@ -12,7 +12,7 @@ import math
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional, Union
 
 # Ensure project root is in sys.path
 _project_root = Path(__file__).resolve().parent.parent.parent
@@ -47,9 +47,13 @@ def generate_mock_embedding(seed_int: int, dim: int = 512) -> List[float]:
     return [round(x / norm, 6) for x in raw]
 
 
-def compute_sha256(payload: str) -> str:
-    """Computes SHA-256 cryptographic digest for evidence integrity."""
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+def compute_sha256(payload: Any) -> str:
+    """Computes SHA-256 cryptographic digest for evidence integrity from file path, bytes, or string."""
+    if isinstance(payload, Path) and payload.is_file():
+        return hashlib.sha256(payload.read_bytes()).hexdigest()
+    if isinstance(payload, (bytes, bytearray)):
+        return hashlib.sha256(payload).hexdigest()
+    return hashlib.sha256(str(payload).encode("utf-8")).hexdigest()
 
 
 # ----------------------------------------------------------------------
@@ -389,7 +393,12 @@ def seed_vehicles_and_sightings(db: Session) -> None:
             norm_v = math.sqrt(sum(x * x for x in varied_emb))
             unit_emb = [round(x / norm_v, 6) for x in varied_emb]
 
-            hash_digest = compute_sha256(f"{item['camera_id']}_{item['timestamp'].isoformat()}_{item['plate_text']}")
+            crop_rel = item.get("crop_path", "").lstrip("/")
+            crop_file = _project_root / crop_rel
+            if crop_file.is_file():
+                hash_digest = compute_sha256(crop_file)
+            else:
+                hash_digest = compute_sha256(f"{item['camera_id']}_{item['timestamp'].isoformat()}_{item['plate_text']}")
 
             sighting = Sighting(
                 vehicle_id=target_veh_id,
@@ -469,7 +478,12 @@ def seed_vehicles_and_sightings(db: Session) -> None:
         )
         if not existing:
             dist_emb = generate_mock_embedding(seed_int=500 + d_idx)
-            hash_digest = compute_sha256(f"{item['camera_id']}_{item['timestamp'].isoformat()}_{item['plate_text']}")
+            crop_rel = item.get("crop_path", "").lstrip("/")
+            crop_file = _project_root / crop_rel
+            if crop_file.is_file():
+                hash_digest = compute_sha256(crop_file)
+            else:
+                hash_digest = compute_sha256(f"{item['camera_id']}_{item['timestamp'].isoformat()}_{item['plate_text']}")
             sighting = Sighting(
                 embedding=dist_emb,
                 sha256_hash=hash_digest,

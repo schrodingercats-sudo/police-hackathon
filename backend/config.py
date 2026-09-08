@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     SECTION_65B_HASH_ALGORITHM: str = "sha256"
     SYSTEM_SALT: str = os.environ.get("SYSTEM_SALT", "delhi-police-cctns-sighting-v1")
 
+    # Authentication & Security
+    API_KEY: Optional[str] = os.environ.get("POLICE_API_KEY", None)
+    REQUIRE_AUTH: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

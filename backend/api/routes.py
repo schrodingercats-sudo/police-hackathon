@@ -57,6 +57,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["Police Command Services"])
 
 
+def verify_police_auth(
+    request: Request,
+    api_key_query: Optional[str] = Query(None, alias="api_key"),
+) -> None:
+    """Validates police API key when REQUIRE_AUTH is enabled (BUG-021)."""
+    if settings.REQUIRE_AUTH:
+        auth_key = request.headers.get("X-API-Key") or api_key_query
+        if not auth_key or (settings.API_KEY and auth_key != settings.API_KEY):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized: Valid police API key or authorization credentials required.",
+            )
+
+
 # -----------------------------------------------------------------------------
 # Spatio-Temporal Math Helpers (Self-Contained & Resilient)
 # -----------------------------------------------------------------------------
@@ -138,6 +152,7 @@ def create_case_report(
     payload: CaseCreateRequest,
     request: Request,
     db: Session = Depends(get_db),
+    _auth: None = Depends(verify_police_auth),
 ):
     """
     Registers a new stolen vehicle FIR case, decodes and saves reference image (if provided),
@@ -709,6 +724,7 @@ def verify_sighting(
     payload: VerificationRequest,
     request: Request,
     db: Session = Depends(get_db),
+    _auth: None = Depends(verify_police_auth),
 ):
     """
     Updates the verification status of a candidate sighting match to 'verified' or 'rejected'.
@@ -939,7 +955,11 @@ def list_cameras(db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
     summary="Register New Camera Node",
 )
-def create_camera(payload: CameraCreateRequest, db: Session = Depends(get_db)):
+def create_camera(
+    payload: CameraCreateRequest,
+    db: Session = Depends(get_db),
+    _auth: None = Depends(verify_police_auth),
+):
     """Registers a new surveillance camera / toll plaza node into the network."""
     existing = db.query(Camera).filter(Camera.id == payload.id).first()
     if existing:
@@ -1075,6 +1095,7 @@ def update_case_status(
     payload: Dict[str, Any],
     request: Request,
     db: Session = Depends(get_db),
+    _auth: None = Depends(verify_police_auth),
 ):
     """Allows authorized police officers to update case lifecycle status (e.g. mark RECOVERED or CLOSED)."""
     case_obj = db.query(Case).filter(Case.id == case_id).first()
