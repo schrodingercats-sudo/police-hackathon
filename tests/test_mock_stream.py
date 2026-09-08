@@ -16,8 +16,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import tempfile
+import os
+from sqlalchemy.orm import sessionmaker
 from stolen_vehicle_ai.backend.database.models import Camera, Case, CaseMatch, Sighting, Vehicle
-from stolen_vehicle_ai.backend.database.session import SessionLocal, init_db, reset_db
 from stolen_vehicle_ai.backend.services.matching_service import (
     compute_composite_matching_score,
     compute_cosine_similarity,
@@ -29,15 +31,40 @@ from stolen_vehicle_ai.backend.services.mock_stream import (
     generate_synthetic_streams,
     get_target_base_embedding,
 )
+from stolen_vehicle_ai.backend.database.session import SessionLocal, init_db, reset_db, create_db_engine
+try:
+    import stolen_vehicle_ai.backend.database.session as db_session_mod
+except ImportError:
+    import backend.database.session as db_session_mod
 
 
 @pytest.fixture(scope="module")
 def mock_db():
-    """Initializes and provides clean database session."""
-    reset_db()
-    db = SessionLocal()
-    yield db
-    db.close()
+    """Initializes and provides clean isolated database session without touching production DB."""
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+        temp_db_path = tmp.name
+
+    test_engine = create_db_engine(f"sqlite:///{temp_db_path}")
+    orig_engine = db_session_mod.engine
+    orig_session_local = db_session_mod.SessionLocal
+
+    db_session_mod.engine = test_engine
+    db_session_mod.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+    reset_db(engine_override=test_engine)
+    db = db_session_mod.SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+        test_engine.dispose()
+        db_session_mod.engine = orig_engine
+        db_session_mod.SessionLocal = orig_session_local
+        if os.path.exists(temp_db_path):
+            try:
+                os.remove(temp_db_path)
+            except OSError:
+                pass
 
 
 class TestSyntheticCorridorConfiguration:

@@ -26,6 +26,13 @@ const App = (function () {
     // 2. Start Live Clocks
     startLiveClocks();
 
+    // Restore saved officer badge from localStorage if present
+    const savedBadge = localStorage.getItem('police_officer_badge');
+    if (savedBadge) {
+      officerBadgeId = savedBadge;
+      updateOfficerBadgeUI();
+    }
+
     // 3. Bind UI Events & Modals
     bindEventHandlers();
 
@@ -107,6 +114,11 @@ const App = (function () {
 
       // Populate camera selectors in search modal
       populateCameraDropdowns(allCameras);
+
+      // Populate camera grid feed panel
+      if (typeof populateCameraGrid === 'function') {
+        populateCameraGrid(allCameras);
+      }
     } catch (err) {
       console.error('Failed to fetch cameras:', err);
     }
@@ -145,10 +157,13 @@ const App = (function () {
         });
       }
 
-      // If activeCaseId is not set, default to FIR-2026-DEL-0941 or first case
+      // If activeCaseId is not set, default to latest active tracking/open case or first case
       if (!activeCaseId && allCases.length > 0) {
         const targetCase =
-          allCases.find((c) => c.fir_number === 'FIR-2026-DEL-0941') || allCases[0];
+          allCases.find((c) => {
+            const st = (c.status || '').toLowerCase();
+            return st === 'tracking' || st === 'open';
+          }) || allCases[0];
         await loadCase(targetCase.id);
       }
     } catch (err) {
@@ -220,6 +235,9 @@ const App = (function () {
           window.MapView.plotRoute(routeData, (id) => {
             if (window.TimelineView) window.TimelineView.selectCard(id);
           });
+        }
+        if (window.TimelineView && typeof window.TimelineView.renderTimeline === 'function') {
+          window.TimelineView.renderTimeline(routeData.waypoints, activeCaseId, onSightingVerified);
         }
       }
       fetchDashboardStats();
@@ -453,6 +471,22 @@ const App = (function () {
         }
       });
     }
+
+    // Officer Badge Click to customize identity
+    const badgeEl = document.querySelector('.officer-badge');
+    if (badgeEl) {
+      badgeEl.style.cursor = 'pointer';
+      badgeEl.title = 'Click to switch duty officer identity / badge ID';
+      badgeEl.addEventListener('click', () => {
+        const currentName = localStorage.getItem('police_officer_name') || 'Insp. Rajesh Kumar';
+        const newBadge = prompt('Enter Officer Badge ID:', officerBadgeId);
+        if (newBadge && newBadge.trim()) {
+          const newName = prompt('Enter Officer Full Name:', currentName) || currentName;
+          setOfficerBadge(newBadge.trim(), newName.trim());
+          showToast(`Active officer switched to: ${newName.trim()} (${newBadge.trim()})`, 'info');
+        }
+      });
+    }
   }
 
   /**
@@ -463,6 +497,16 @@ const App = (function () {
 
     const firNumber = document.getElementById('fir-number-input').value.trim();
     const reportedPlate = document.getElementById('fir-plate-input').value.trim().toUpperCase();
+
+    if (!firNumber) {
+      showToast('FIR Number is required', 'error');
+      return;
+    }
+    if (!reportedPlate) {
+      showToast('Reported Vehicle Plate Registration is required', 'error');
+      return;
+    }
+
     const vehicleType = document.getElementById('fir-type-input').value;
     const vehicleColor = document.getElementById('fir-color-input').value;
     const make = document.getElementById('fir-make-input').value.trim();
@@ -470,10 +514,12 @@ const App = (function () {
     const features = document.getElementById('fir-features-input').value.trim();
     const theftTime = document.getElementById('fir-theft-time-input').value;
     const theftLocation = document.getElementById('fir-theft-location-input').value.trim();
-    const theftLat = parseFloat(document.getElementById('fir-theft-lat-input').value) || 28.6315;
-    const theftLon = parseFloat(document.getElementById('fir-theft-lon-input').value) || 77.2167;
-    const officer = document.getElementById('fir-officer-input').value.trim() || 'Inspector Rajesh Kumar (DL-4821)';
-    const station = document.getElementById('fir-station-input').value.trim() || 'Parliament Street Police Station';
+    const latInput = document.getElementById('fir-theft-lat-input').value;
+    const lonInput = document.getElementById('fir-theft-lon-input').value;
+    const theftLat = latInput ? parseFloat(latInput) : 28.6139;
+    const theftLon = lonInput ? parseFloat(lonInput) : 77.2090;
+    const officer = document.getElementById('fir-officer-input').value.trim() || `Duty Officer (${officerBadgeId})`;
+    const station = document.getElementById('fir-station-input').value.trim() || 'Central Police Station';
 
     const previewBox = document.getElementById('fir-photo-preview');
     const refBase64 = previewBox ? previewBox.dataset.base64 : null;
@@ -491,12 +537,12 @@ const App = (function () {
       theft_datetime: theftTime ? new Date(theftTime).toISOString() : new Date().toISOString(),
       theft_latitude: theftLat,
       theft_longitude: theftLon,
-      theft_location_name: theftLocation || 'Connaught Place, New Delhi',
+      theft_location_name: theftLocation || 'Incident Scene',
       vehicle_type: vehicleType,
       vehicle_color: vehicleColor,
-      make: make || 'Generic',
-      model: model || 'Sedan',
-      distinctive_features: features || 'None',
+      make: make || 'Unknown',
+      model: model || 'Unknown',
+      distinctive_features: features || 'None reported',
       reference_image_base64: refBase64,
       investigating_officer: officer,
       police_station: station
@@ -631,7 +677,8 @@ const App = (function () {
 
   function highlightSightingOnMap(lat, lon, plateText) {
     document.getElementById('search-modal').classList.remove('active');
-    if (window.MapView) {
+    if (window.MapView && typeof window.MapView.panToLocation === 'function') {
+      window.MapView.panToLocation(lat, lon, 15);
       showToast(`Panning to sighting location for ${plateText}`, 'info');
     }
   }
@@ -693,11 +740,31 @@ const App = (function () {
     return officerBadgeId;
   }
 
+  function setOfficerBadge(badgeId, officerName) {
+    if (badgeId) {
+      officerBadgeId = badgeId.trim();
+      localStorage.setItem('police_officer_badge', officerBadgeId);
+      if (officerName) {
+        localStorage.setItem('police_officer_name', officerName.trim());
+      }
+      updateOfficerBadgeUI();
+    }
+  }
+
+  function updateOfficerBadgeUI() {
+    const el = document.querySelector('.officer-badge span');
+    const storedName = localStorage.getItem('police_officer_name') || 'Insp. Rajesh Kumar';
+    if (el) {
+      el.textContent = `${storedName} (Badge #${officerBadgeId})`;
+    }
+  }
+
   return {
     init,
     loadCase,
     showToast,
     getOfficerBadgeId,
+    setOfficerBadge,
     highlightSightingOnMap
   };
 })();
@@ -735,9 +802,8 @@ function initViewTabs() {
 
       // Invalidate map size after layout change
       setTimeout(() => {
-        if (window.MapView && window.MapView.initMap) {
-          const map = window.MapView.initMap('map');
-          if (map && map.invalidateSize) map.invalidateSize();
+        if (window.MapView && typeof window.MapView.invalidateSize === 'function') {
+          window.MapView.invalidateSize();
         }
       }, 200);
     });

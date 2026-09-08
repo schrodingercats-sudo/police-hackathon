@@ -18,20 +18,36 @@ from typing import List, Optional, Tuple, Dict, Any
 import numpy as np
 import cv2
 
-from stolen_vehicle_ai.vision.detector import (
-    BaseVehicleDetector,
-    YOLOVehicleDetector,
-    MockVehicleDetector,
-    VehicleDetection,
-)
-from stolen_vehicle_ai.vision.tracker import ByteTrackTracker, Tracklet, compute_snapshot_quality
-from stolen_vehicle_ai.vision.plate_detector import LicensePlateDetector
-from stolen_vehicle_ai.vision.ocr_engine import OCREngine
-from stolen_vehicle_ai.vision.reid_extractor import (
-    ReIDFeatureExtractor,
-    DominantColorClassifier,
-)
-from stolen_vehicle_ai.pipeline.snapshot_manager import SnapshotManager
+try:
+    from vision.detector import (
+        BaseVehicleDetector,
+        YOLOVehicleDetector,
+        MockVehicleDetector,
+        VehicleDetection,
+    )
+    from vision.tracker import ByteTrackTracker, Tracklet, compute_snapshot_quality
+    from vision.plate_detector import LicensePlateDetector
+    from vision.ocr_engine import OCREngine
+    from vision.reid_extractor import (
+        ReIDFeatureExtractor,
+        DominantColorClassifier,
+    )
+    from pipeline.snapshot_manager import SnapshotManager
+except ImportError:
+    from stolen_vehicle_ai.vision.detector import (
+        BaseVehicleDetector,
+        YOLOVehicleDetector,
+        MockVehicleDetector,
+        VehicleDetection,
+    )
+    from stolen_vehicle_ai.vision.tracker import ByteTrackTracker, Tracklet, compute_snapshot_quality
+    from stolen_vehicle_ai.vision.plate_detector import LicensePlateDetector
+    from stolen_vehicle_ai.vision.ocr_engine import OCREngine
+    from stolen_vehicle_ai.vision.reid_extractor import (
+        ReIDFeatureExtractor,
+        DominantColorClassifier,
+    )
+    from stolen_vehicle_ai.pipeline.snapshot_manager import SnapshotManager
 
 
 @dataclass
@@ -53,10 +69,10 @@ class SightingResult:
     plate_bbox: Optional[List[int]]
     reid_embedding: List[float]        # 512-D L2-normalized float list
     quality_score: float
-    frame_image_path: str
-    crop_image_path: str
-    plate_crop_path: Optional[str]
-    sha256_hash: str
+    frame_image_path: Optional[str] = None
+    crop_image_path: Optional[str] = None
+    plate_crop_path: Optional[str] = None
+    sha256_hash: str = ""
     metadata: Optional[Dict[str, Any]] = None
 
 
@@ -166,9 +182,9 @@ class VideoProcessor:
                 frame_path = ev_pkg["frame_image_path"]
                 sha256_digest = ev_pkg["sha256_hash"]
             else:
-                crop_path = f"virtual://{camera_id}/trk_{tracklet.track_id}_crop.jpg"
-                plate_path = f"virtual://{camera_id}/trk_{tracklet.track_id}_plate.jpg"
-                frame_path = f"virtual://{camera_id}/trk_{tracklet.track_id}_frame.jpg"
+                crop_path = None
+                plate_path = None
+                frame_path = None
                 sha256_digest = SnapshotManager.compute_sha256(crop)
 
             sighting = SightingResult(

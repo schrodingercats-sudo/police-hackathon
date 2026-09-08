@@ -262,6 +262,7 @@ def generate_evidence_dossier(
     db: Session,
     case_id: int,
     officer_badge_id: Optional[str] = None,
+    client_ip: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Generates a full court-admissible evidence dossier for a given stolen vehicle case.
@@ -327,17 +328,22 @@ def generate_evidence_dossier(
     # Sort timeline chronologically
     verified_timeline.sort(key=lambda x: x.get("timestamp") or "")
 
-    # Retrieve chain of custody audit logs associated with this FIR / Case
+    # Retrieve chain of custody audit logs associated strictly with this FIR / Case
     fir_str = str(case_obj.fir_number)
     case_id_str = str(case_obj.id)
+    match_id_strs = [str(m.id) for m in matches]
+    
+    audit_filters = [
+        AuditLog.resource_id == fir_str,
+        AuditLog.resource_id == case_id_str,
+    ]
+    if match_id_strs:
+        audit_filters.append(AuditLog.resource_id.in_(match_id_strs))
+
+    from sqlalchemy import or_
     audit_records = (
         db.query(AuditLog)
-        .filter(
-            (AuditLog.resource_id == fir_str)
-            | (AuditLog.resource_id == case_id_str)
-            | (AuditLog.resource_type == "case")
-            | (AuditLog.resource_type == "case_match")
-        )
+        .filter(or_(*audit_filters))
         .order_by(AuditLog.timestamp.asc())
         .limit(100)
         .all()
@@ -404,7 +410,7 @@ def generate_evidence_dossier(
         resource_type="case",
         resource_id=str(case_obj.fir_number),
         endpoint="/api/evidence/export",
-        ip_address="127.0.0.1",
+        ip_address=client_ip or "127.0.0.1",
         details={
             "case_id": case_obj.id,
             "fir_number": case_obj.fir_number,

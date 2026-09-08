@@ -12,8 +12,19 @@ from typing import List, Tuple, Optional, Dict, Any
 import numpy as np
 import cv2
 
-from stolen_vehicle_ai.vision.detector import VehicleDetection
-from stolen_vehicle_ai.vision.preprocessor import laplacian_variance
+try:
+    from vision.detector import VehicleDetection
+    from vision.preprocessor import laplacian_variance
+except ImportError:
+    from stolen_vehicle_ai.vision.detector import VehicleDetection
+    from stolen_vehicle_ai.vision.preprocessor import laplacian_variance
+
+try:
+    from scipy.optimize import linear_sum_assignment
+    _HAVE_SCIPY = True
+except ImportError:
+    _HAVE_SCIPY = False
+
 
 
 def compute_iou(bbox1: Tuple[int, int, int, int], bbox2: Tuple[int, int, int, int]) -> float:
@@ -403,7 +414,8 @@ class ByteTrackTracker:
         max_distance: float,
     ) -> Tuple[List[Tuple[int, int]], List[int], List[int]]:
         """
-        Greedy bipartite matching based on IoU distance (1 - IoU).
+        Optimal bipartite matching based on IoU distance (1 - IoU) using Hungarian algorithm (scipy)
+        with greedy matching fallback.
         """
         if not track_boxes or not det_boxes:
             return [], list(range(len(track_boxes))), list(range(len(det_boxes)))
@@ -414,22 +426,29 @@ class ByteTrackTracker:
         matched_tracks = []
         matched_dets = set()
         matched_trks = set()
-
-        # Sort all pairs by ascending cost
         num_trks, num_dets = cost_matrix.shape
-        flat_indices = np.argsort(cost_matrix, axis=None)
 
-        for flat_idx in flat_indices:
-            t_idx = int(flat_idx // num_dets)
-            d_idx = int(flat_idx % num_dets)
+        if _HAVE_SCIPY and cost_matrix.size > 0:
+            row_ind, col_ind = linear_sum_assignment(cost_matrix)
+            for r, c in zip(row_ind, col_ind):
+                if cost_matrix[r, c] <= max_distance:
+                    matched_tracks.append((int(r), int(c)))
+                    matched_trks.add(int(r))
+                    matched_dets.add(int(c))
+        else:
+            # Sort all pairs by ascending cost
+            flat_indices = np.argsort(cost_matrix, axis=None)
+            for flat_idx in flat_indices:
+                t_idx = int(flat_idx // num_dets)
+                d_idx = int(flat_idx % num_dets)
 
-            if t_idx in matched_trks or d_idx in matched_dets:
-                continue
+                if t_idx in matched_trks or d_idx in matched_dets:
+                    continue
 
-            if cost_matrix[t_idx, d_idx] <= max_distance:
-                matched_trks.add(t_idx)
-                matched_dets.add(d_idx)
-                matched_tracks.append((t_idx, d_idx))
+                if cost_matrix[t_idx, d_idx] <= max_distance:
+                    matched_trks.add(t_idx)
+                    matched_dets.add(d_idx)
+                    matched_tracks.append((t_idx, d_idx))
 
         unmatched_tracks = [i for i in range(num_trks) if i not in matched_trks]
         unmatched_dets = [j for j in range(num_dets) if j not in matched_dets]
@@ -443,3 +462,4 @@ class ByteTrackTracker:
         self.trackers.clear()
         self.active_tracklets.clear()
         self.frame_count = 0
+        KalmanBoxTracker.count = 0

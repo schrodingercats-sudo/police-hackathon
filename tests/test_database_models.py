@@ -318,7 +318,10 @@ class TestDatabaseEngineAndSession:
     """Tier 1: Engine creation, table initialization, and reset routines."""
 
     def test_sqlite_engine_creation(self):
-        from backend.database.session import create_db_engine, init_db, reset_db
+        try:
+            from backend.database.session import create_db_engine, init_db, reset_db
+        except ImportError:
+            from stolen_vehicle_ai.backend.database.session import create_db_engine, init_db, reset_db
         engine = create_db_engine("sqlite:///:memory:")
         assert engine is not None
         assert "sqlite" in engine.dialect.name

@@ -37,8 +37,8 @@ class ReIDFeatureExtractor:
         # Input raw feature dimension: 16 zones * (16 HSV + 16 LAB + 16 Grad bins) = 768
         raw_dim = 16 * 48
         rand_mat = rng.randn(raw_dim, self.EMBEDDING_DIM).astype(np.float32)
-        # Orthonormalize columns using QR decomposition
-        q, _ = np.linalg.qr(rand_mat)
+        # Orthonormalize columns using QR decomposition (reduced mode for exact 768x512 shape)
+        q, _ = np.linalg.qr(rand_mat, mode="reduced")
         return q.astype(np.float32)
 
     def extract_embedding(self, vehicle_crop: np.ndarray) -> List[float]:

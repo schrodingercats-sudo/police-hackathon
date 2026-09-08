@@ -16,8 +16,14 @@ opencv-python-headless>=4.8.0.76
 numpy>=1.24.0
 pillow>=10.2.0
 
-# Spatio-Temporal & Utility Helpers
+# Spatio-Temporal, Scientific Mathematics & Utility Helpers
+scipy>=1.11.0
 python-dateutil>=2.8.2
+
+# Deep Learning, YOLOv8 Vehicle Detection & OCR Recognition Engines
+ultralytics>=8.1.0
+easyocr>=1.7.0
+pytesseract>=0.3.10
 
 # Testing & Quality Assurance
 pytest>=8.0.0

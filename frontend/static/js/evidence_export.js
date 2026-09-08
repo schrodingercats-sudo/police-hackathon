@@ -54,6 +54,7 @@ const EvidenceExport = (function () {
    */
   function renderDossier(dossier, container) {
     const summary = dossier.case_summary || {};
+    const timeline = dossier.verified_timeline || [];
     const chain = dossier.chain_of_custody || [];
     const exportTime = dossier.export_timestamp
       ? new Date(dossier.export_timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST'
@@ -61,20 +62,21 @@ const EvidenceExport = (function () {
     const masterHash = dossier.evidence_hash_sha256 || 'N/A';
 
     let sightingsRowsHtml = '';
-    if (chain.length === 0) {
+    if (timeline.length === 0) {
       sightingsRowsHtml = `<tr><td colspan="6" style="text-align: center; padding: 16px; color: #6b7280;">No verified sighting records linked to this case.</td></tr>`;
     } else {
-      chain.forEach((item, idx) => {
+      timeline.forEach((item, idx) => {
         const timeStr = item.timestamp
           ? new Date(item.timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
           : 'N/A';
         const vCrop = item.crop_url || '/static/img/placeholder_car.jpg';
         const pCrop = item.plate_crop_url || '/static/img/placeholder_plate.jpg';
         const hashStr = item.sha256_hash || 'N/A';
+        const speedStr = item.speed_kmh != null ? `${item.speed_kmh} km/h` : 'Origin Point';
 
         sightingsRowsHtml += `
           <tr>
-            <td style="text-align: center; font-weight: bold;">${item.sequence || idx + 1}</td>
+            <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
             <td>
               <strong>${item.camera_name || item.camera_id}</strong><br/>
               <span style="font-size: 10px; color: #4b5563;">${item.road_name || 'Surveillance Node'}</span><br/>
@@ -91,12 +93,33 @@ const EvidenceExport = (function () {
               <div style="font-size: 9px; color: #059669; font-weight: normal;">Conf: ${Math.round((item.plate_confidence || 0.9) * 100)}%</div>
             </td>
             <td style="text-align: center; font-size: 11px;">
-              ${item.speed_from_prev_kmh ? `${item.speed_from_prev_kmh} km/h` : 'Origin Point'}<br/>
+              ${speedStr}<br/>
               <span style="font-size: 9px; color: #059669;">Verified by ${item.reviewed_by || summary.investigating_officer || 'Officer'}</span>
             </td>
             <td style="font-family: monospace; font-size: 9px; word-break: break-all; max-width: 220px; color: #111827;">
               ${hashStr}
             </td>
+          </tr>
+        `;
+      });
+    }
+
+    let custodyRowsHtml = '';
+    if (chain.length === 0) {
+      custodyRowsHtml = `<tr><td colspan="5" style="text-align: center; padding: 12px; color: #6b7280;">No audit records logged for this case.</td></tr>`;
+    } else {
+      chain.forEach((log) => {
+        const timeStr = log.timestamp
+          ? new Date(log.timestamp).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+          : 'N/A';
+        const detailsStr = typeof log.details === 'object' ? JSON.stringify(log.details) : (log.details || '');
+        custodyRowsHtml += `
+          <tr>
+            <td style="font-family: monospace; font-size: 10px;">${timeStr}</td>
+            <td><strong>${log.user_badge_id || 'SYSTEM'}</strong> (${log.user_name || 'Officer'})</td>
+            <td><code style="font-size: 10px; color: #0284c7;">${log.action || 'N/A'}</code></td>
+            <td style="font-family: monospace; font-size: 10px;">${log.ip_address || '127.0.0.1'}</td>
+            <td style="font-size: 10px; color: #4b5563; word-break: break-all;">${detailsStr}</td>
           </tr>
         `;
       });
@@ -163,8 +186,8 @@ const EvidenceExport = (function () {
           </tr>
         </table>
 
-        <!-- Chain of Custody Table -->
-        <div class="dossier-section-title">II. FORENSIC CHAIN OF CUSTODY &amp; CAMERA SIGHTING LOG</div>
+        <!-- Sighting Evidence Table -->
+        <div class="dossier-section-title">II. FORENSIC SIGHTING RECORDS &amp; PHOTOGRAPHIC EVIDENCE</div>
         <table class="dossier-meta-table" style="font-size: 11px;">
           <thead>
             <tr>
@@ -181,8 +204,25 @@ const EvidenceExport = (function () {
           </tbody>
         </table>
 
+        <!-- Chain of Custody Audit Log Table -->
+        <div class="dossier-section-title">III. FORENSIC CHAIN OF CUSTODY &amp; AUDIT TRAIL</div>
+        <table class="dossier-meta-table" style="font-size: 11px;">
+          <thead>
+            <tr>
+              <th style="width: 20%;">Timestamp (IST)</th>
+              <th style="width: 22%;">Officer / Identity</th>
+              <th style="width: 18%;">Action</th>
+              <th style="width: 15%;">Terminal IP</th>
+              <th style="width: 25%;">Audit Event Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${custodyRowsHtml}
+          </tbody>
+        </table>
+
         <!-- Formal Legal Certificate Text -->
-        <div class="dossier-section-title">III. FORMAL CERTIFICATE UNDER SECTION 65B(4) / SECTION 63 BSA</div>
+        <div class="dossier-section-title">IV. FORMAL CERTIFICATE UNDER SECTION 65B(4) / SECTION 63 BSA</div>
         <div style="font-size: 11px; text-align: justify; color: #1f2937; margin-bottom: 20px; line-height: 1.5;">
           <p style="margin-bottom: 8px;">
             1. I, the undersigned Investigating Officer, hereby certify that the electronic records, computer-generated visual sightings, license plate recognitions, and spatio-temporal transit route reconstructions contained in this electronic dossier were produced by the automated Indian Police Stolen Vehicle AI Command Network during the ordinary course of its lawful operations.

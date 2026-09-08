@@ -11,7 +11,10 @@ from typing import Tuple, Optional, List
 import numpy as np
 import cv2
 
-from stolen_vehicle_ai.vision.preprocessor import clahe_enhance
+try:
+    from vision.preprocessor import clahe_enhance
+except ImportError:
+    from stolen_vehicle_ai.vision.preprocessor import clahe_enhance
 
 
 def order_points(pts: np.ndarray) -> np.ndarray:
@@ -143,10 +146,14 @@ class LicensePlateDetector:
             approx = cv2.approxPolyDP(cnt, 0.03 * peri, True)
 
             score = area * y_weight * (1.5 if is_single_line else 1.0)
+            cand_conf = float(np.clip(0.60 + 0.35 * (area / (vw * vh * 0.15)), 0.50, 0.95))
+            if cand_conf < self.confidence_threshold:
+                continue
+
             if score > best_score:
                 best_score = score
                 best_bbox = (x, y, x + bw, y + bh)
-                best_conf = float(np.clip(0.60 + 0.35 * (area / (vw * vh * 0.15)), 0.50, 0.95))
+                best_conf = cand_conf
 
                 if len(approx) == 4:
                     pts = approx.reshape(4, 2).astype(np.float32)
@@ -179,13 +186,16 @@ class LicensePlateDetector:
                 best_crop = cv2.resize(
                     fallback_roi, (self.TARGET_WIDTH, self.TARGET_HEIGHT), interpolation=cv2.INTER_CUBIC
                 )
-                best_bbox = (x1, y1, x2, y2)
                 best_conf = 0.40
+                best_bbox = (x1, y1, x2, y2) if best_conf >= self.confidence_threshold else None
             else:
                 best_crop = cv2.resize(
                     vehicle_crop, (self.TARGET_WIDTH, self.TARGET_HEIGHT), interpolation=cv2.INTER_CUBIC
                 )
-                best_bbox = (0, 0, vw, vh)
                 best_conf = 0.30
+                best_bbox = (0, 0, vw, vh) if best_conf >= self.confidence_threshold else None
+
+        if best_conf < self.confidence_threshold:
+            best_bbox = None
 
         return best_crop, best_bbox, float(best_conf)

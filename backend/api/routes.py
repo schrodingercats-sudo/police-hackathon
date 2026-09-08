@@ -180,17 +180,28 @@ def create_case_report(
             updated_at=existing.updated_at,
         )
 
-    # Save reference image if provided as base64
+    # Save reference image if provided as base64 with magic byte validation (SEC-003)
     ref_image_path = None
     if payload.reference_image_base64:
         try:
             image_data = base64.b64decode(payload.reference_image_base64)
-            safe_fir = payload.fir_number.replace("/", "_").replace("-", "_")
-            file_name = f"ref_{safe_fir}.jpg"
-            full_path = settings.EVIDENCE_DIR / file_name
-            with open(full_path, "wb") as f:
-                f.write(image_data)
-            ref_image_path = f"/evidence/{file_name}"
+            ext = None
+            if image_data.startswith(b"\xff\xd8\xff"):
+                ext = "jpg"
+            elif image_data.startswith(b"\x89PNG\r\n\x1a\n"):
+                ext = "png"
+            elif image_data.startswith(b"RIFF") and len(image_data) >= 12 and image_data[8:12] == b"WEBP":
+                ext = "webp"
+
+            if not ext:
+                logger.warning(f"Invalid reference image format for FIR {payload.fir_number}: disallowed magic bytes")
+            else:
+                safe_fir = "".join(c for c in payload.fir_number if c.isalnum() or c in ("_", "-"))
+                file_name = f"ref_{safe_fir}.{ext}"
+                full_path = settings.EVIDENCE_DIR / file_name
+                with open(full_path, "wb") as f:
+                    f.write(image_data)
+                ref_image_path = f"/evidence/{file_name}"
         except Exception as e:
             logger.warning(f"Could not decode reference image for FIR {payload.fir_number}: {e}")
 
@@ -352,12 +363,7 @@ def search_sightings(
         query = query.filter(Sighting.timestamp <= end_time)
 
     if min_confidence > 0:
-        query = query.filter(
-            or_(
-                Sighting.plate_confidence >= min_confidence,
-                Sighting.plate_text.isnot(None),
-            )
-        )
+        query = query.filter(Sighting.plate_confidence >= min_confidence)
 
     total_count = query.count()
     offset = (page - 1) * limit
@@ -370,6 +376,17 @@ def search_sightings(
         cam_lat = cam.latitude if cam else 0.0
         cam_lon = cam.longitude if cam else 0.0
         road_name = cam.road_name if cam else "Corridor Location"
+
+        # Determine composite score and verification status from linked case_matches
+        comp_score = s.plate_confidence or 0.0
+        v_status = "pending"
+        if s.case_matches:
+            best_match = max(s.case_matches, key=lambda m: m.composite_score or 0.0)
+            comp_score = best_match.composite_score or comp_score
+            if hasattr(best_match.verification_status, "value"):
+                v_status = best_match.verification_status.value
+            else:
+                v_status = str(best_match.verification_status)
 
         items.append(
             SightingDTO(
@@ -389,14 +406,14 @@ def search_sightings(
                 vehicle_color=s.vehicle_color,
                 make=s.make,
                 model=s.model,
-                composite_score=round(s.plate_confidence or 0.85, 4),
+                composite_score=round(comp_score, 4),
                 image_url=s.image_path,
                 crop_url=s.crop_path,
                 plate_crop_url=s.plate_crop_path,
                 sha256_hash=s.sha256_hash,
                 direction_travel=s.direction_travel,
                 speed_estimate_kmh=s.speed_estimate_kmh,
-                verification_status="pending",
+                verification_status=v_status,
                 created_at=s.created_at,
             )
         )
@@ -501,14 +518,20 @@ def get_case_route(
 
         if prev_lat is not None and prev_lon is not None and prev_time is not None:
             dist_from_prev = haversine_km(prev_lat, prev_lon, cam_lat, cam_lon)
-            time_delta_sec = abs((sighting.timestamp - prev_time).total_seconds())
+            time_delta_sec = (sighting.timestamp - prev_time).total_seconds()
 
-            if time_delta_sec > 0:
+            if time_delta_sec < 0:
+                speed_kmh = 999.0
+                is_feasible = False
+            elif time_delta_sec > 0:
                 speed_kmh = dist_from_prev / (time_delta_sec / 3600.0)
+                is_feasible = speed_kmh <= settings.MAX_SPEED_KMH
             elif dist_from_prev > 0.05:
                 speed_kmh = 999.0
-
-            is_feasible = speed_kmh <= settings.MAX_SPEED_KMH
+                is_feasible = False
+            else:
+                speed_kmh = 0.0
+                is_feasible = True
 
             # Create route segment
             segments.append(
@@ -623,6 +646,17 @@ def get_sightings_feed(
         cam_lon = cam.longitude if cam else 0.0
         road_name = cam.road_name if cam else "Corridor Location"
 
+        # Determine composite score and verification status from linked case_matches
+        comp_score = s.plate_confidence or 0.0
+        v_status = "pending"
+        if s.case_matches:
+            best_match = max(s.case_matches, key=lambda m: m.composite_score or 0.0)
+            comp_score = best_match.composite_score or comp_score
+            if hasattr(best_match.verification_status, "value"):
+                v_status = best_match.verification_status.value
+            else:
+                v_status = str(best_match.verification_status)
+
         results.append(
             SightingDTO(
                 id=s.id,
@@ -641,14 +675,14 @@ def get_sightings_feed(
                 vehicle_color=s.vehicle_color,
                 make=s.make,
                 model=s.model,
-                composite_score=round(s.plate_confidence or 0.90, 4),
+                composite_score=round(comp_score, 4),
                 image_url=s.image_path,
                 crop_url=s.crop_path,
                 plate_crop_url=s.plate_crop_path,
                 sha256_hash=s.sha256_hash,
                 direction_travel=s.direction_travel,
                 speed_estimate_kmh=s.speed_estimate_kmh,
-                verification_status="pending",
+                verification_status=v_status,
                 created_at=s.created_at,
             )
         )
@@ -697,9 +731,13 @@ def verify_sighting(
         .first()
     )
 
-    enum_status = (
-        VerificationStatus.VERIFIED if target_status == "verified" else VerificationStatus.REJECTED
-    )
+    status_map = {
+        "verified": VerificationStatus.VERIFIED,
+        "rejected": VerificationStatus.REJECTED,
+        "flagged": VerificationStatus.FLAGGED,
+        "pending": VerificationStatus.PENDING,
+    }
+    enum_status = status_map.get(target_status, VerificationStatus.PENDING)
 
     if not match:
         # Create match record if not existing
@@ -795,16 +833,11 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 
     recovered_cases = db.query(Case).filter(Case.status == CaseStatus.RECOVERED).count()
     total_cases = db.query(Case).count()
-    recovery_rate = round((recovered_cases / total_cases * 100.0) if total_cases > 0 else 18.5, 1)
+    recovery_rate = round((recovered_cases / total_cases * 100.0) if total_cases > 0 else 0.0, 1)
 
-    today_start = datetime.combine(date.today(), time.min)
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
     detections_today = db.query(Sighting).filter(Sighting.timestamp >= today_start).count()
-    if detections_today == 0:
-        detections_today = db.query(Sighting).count()
-
     matches_today = db.query(CaseMatch).filter(CaseMatch.created_at >= today_start).count()
-    if matches_today == 0:
-        matches_today = db.query(CaseMatch).count()
 
     # Query all cameras with detection counts
     cameras_raw = db.query(Camera).all()
@@ -984,9 +1017,16 @@ def get_camera_frame(camera_id: str):
 # 9. Case Management Endpoints (GET /api/cases)
 # -----------------------------------------------------------------------------
 @router.get("/cases", response_model=List[CaseResponse], summary="List All FIR Cases")
-def list_cases(db: Session = Depends(get_db)):
-    """Retrieves all registered stolen vehicle FIR cases with candidate counts."""
-    cases = db.query(Case).order_by(Case.created_at.desc()).all()
+def list_cases(
+    limit: Optional[int] = Query(None, ge=1, le=500, description="Max cases to return"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    db: Session = Depends(get_db),
+):
+    """Retrieves registered stolen vehicle FIR cases with candidate counts and optional pagination."""
+    query = db.query(Case).order_by(Case.created_at.desc())
+    if limit is not None:
+        query = query.offset(offset).limit(limit)
+    cases = query.all()
     results = []
     for c in cases:
         total_cand = db.query(CaseMatch).filter(CaseMatch.case_id == c.id).count()
@@ -1023,6 +1063,94 @@ def list_cases(db: Session = Depends(get_db)):
             )
         )
     return results
+
+
+@router.patch(
+    "/cases/{case_id}/status",
+    response_model=CaseResponse,
+    summary="Update Case Lifecycle Status (Recovered / Closed / Tracking / Open)",
+)
+def update_case_status(
+    case_id: int,
+    payload: Dict[str, Any],
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Allows authorized police officers to update case lifecycle status (e.g. mark RECOVERED or CLOSED)."""
+    case_obj = db.query(Case).filter(Case.id == case_id).first()
+    if not case_obj:
+        raise HTTPException(status_code=404, detail=f"Case #{case_id} not found.")
+
+    new_status_str = str(payload.get("status", "")).lower().strip()
+    status_map = {
+        "open": CaseStatus.OPEN,
+        "tracking": CaseStatus.TRACKING,
+        "recovered": CaseStatus.RECOVERED,
+        "closed": CaseStatus.CLOSED,
+    }
+    if new_status_str not in status_map:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status '{new_status_str}'. Allowed statuses: {list(status_map.keys())}",
+        )
+
+    old_status = case_obj.status.value if hasattr(case_obj.status, "value") else str(case_obj.status)
+    case_obj.status = status_map[new_status_str]
+    case_obj.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.commit()
+    db.refresh(case_obj)
+
+    # Log to audit trail
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    officer_badge = str(payload.get("officer_badge_id") or case_obj.investigating_officer or "OFFICER")
+    log_audit_event(
+        db=db,
+        user_badge_id=officer_badge,
+        user_name=f"Officer {officer_badge}",
+        action="CASE_STATUS_UPDATE",
+        resource_type="case",
+        resource_id=case_obj.fir_number,
+        endpoint=f"/api/cases/{case_id}/status",
+        ip_address=client_ip,
+        details={
+            "case_id": case_obj.id,
+            "old_status": old_status,
+            "new_status": new_status_str,
+            "notes": payload.get("notes"),
+        },
+    )
+
+    total_cand = db.query(CaseMatch).filter(CaseMatch.case_id == case_obj.id).count()
+    verified = (
+        db.query(CaseMatch)
+        .filter(
+            CaseMatch.case_id == case_obj.id,
+            CaseMatch.verification_status == VerificationStatus.VERIFIED,
+        )
+        .count()
+    )
+    return CaseResponse(
+        id=case_obj.id,
+        fir_number=case_obj.fir_number,
+        reported_plate=case_obj.reported_plate,
+        theft_datetime=case_obj.theft_datetime,
+        theft_latitude=case_obj.theft_latitude,
+        theft_longitude=case_obj.theft_longitude,
+        theft_location_name=case_obj.theft_location_name,
+        vehicle_type=case_obj.vehicle_type,
+        vehicle_color=case_obj.vehicle_color,
+        make=case_obj.make,
+        model=case_obj.model,
+        distinctive_features=case_obj.distinctive_features,
+        status=case_obj.status.value if hasattr(case_obj.status, "value") else str(case_obj.status),
+        investigating_officer=case_obj.investigating_officer,
+        police_station=case_obj.police_station,
+        reference_image_path=case_obj.reference_image_path,
+        total_candidate_sightings=total_cand,
+        verified_sightings=verified,
+        created_at=case_obj.created_at,
+        updated_at=case_obj.updated_at,
+    )
 
 
 @router.get("/cases/{case_id}", response_model=CaseResponse, summary="Get Case Details")
@@ -1073,6 +1201,7 @@ def get_case(case_id: int, db: Session = Depends(get_db)):
     summary="Export Court-Admissible Section 65B Electronic Dossier",
 )
 def export_evidence_dossier(
+    request: Request,
     case_id: int = Query(..., description="Stolen vehicle case ID"),
     db: Session = Depends(get_db),
 ):
@@ -1080,7 +1209,8 @@ def export_evidence_dossier(
     Compiles complete court-admissible electronic dossier with Section 65B SHA-256
     cryptographic digests, chronological photographic timeline, and chain of custody.
     """
-    dossier = generate_evidence_dossier(db, case_id)
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    dossier = generate_evidence_dossier(db, case_id, client_ip=client_ip)
     if not dossier:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1120,6 +1250,16 @@ def view_printable_evidence_html(
 # -----------------------------------------------------------------------------
 # 12. Real-Time ANPR Live Scan Endpoints
 # -----------------------------------------------------------------------------
+_live_anpr_processor = None
+
+def _get_anpr_processor():
+    global _live_anpr_processor
+    if _live_anpr_processor is None:
+        from vision.anpr_live import LiveANPRProcessor
+        _live_anpr_processor = LiveANPRProcessor(gpu=False)
+    return _live_anpr_processor
+
+
 @router.post("/anpr/scan", summary="Real-Time ANPR Scan on Uploaded Image")
 async def anpr_scan_image(request: Request):
     """
@@ -1155,8 +1295,8 @@ async def anpr_scan_image(request: Request):
         raise HTTPException(status_code=400, detail="Could not decode image.")
 
     try:
-        from vision.anpr_live import LiveANPRProcessor, compute_frame_hash
-        processor = LiveANPRProcessor(gpu=False)
+        from vision.anpr_live import compute_frame_hash
+        processor = _get_anpr_processor()
         detections = processor.detect_plates_in_frame(frame)
         frame_hash = compute_frame_hash(frame)
     except ImportError:
@@ -1214,8 +1354,8 @@ def anpr_scan_camera(camera_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Could not read frame image.")
 
     try:
-        from vision.anpr_live import LiveANPRProcessor, compute_frame_hash
-        processor = LiveANPRProcessor(gpu=False)
+        from vision.anpr_live import compute_frame_hash
+        processor = _get_anpr_processor()
         detections = processor.detect_plates_in_frame(frame)
         frame_hash = compute_frame_hash(frame)
     except ImportError:

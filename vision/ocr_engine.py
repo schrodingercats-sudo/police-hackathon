@@ -12,8 +12,12 @@ from typing import Tuple, Optional, Dict, Any, List
 import numpy as np
 import cv2
 
-from stolen_vehicle_ai.vision.preprocessor import preprocess_for_ocr, binarize_plate
-from stolen_vehicle_ai.vision.indian_lp_parser import repair_indian_plate, clean_plate_string
+try:
+    from vision.preprocessor import preprocess_for_ocr, binarize_plate
+    from vision.indian_lp_parser import repair_indian_plate, clean_plate_string
+except ImportError:
+    from stolen_vehicle_ai.vision.preprocessor import preprocess_for_ocr, binarize_plate
+    from stolen_vehicle_ai.vision.indian_lp_parser import repair_indian_plate, clean_plate_string
 
 
 class OCREngine:
@@ -96,7 +100,12 @@ class OCREngine:
         # Try active OCR backend
         if self.engine_name == "paddleocr" and self._paddle_ocr is not None:
             try:
-                results = self._paddle_ocr.ocr(preprocessed, cls=True)
+                paddle_input = (
+                    cv2.cvtColor(preprocessed, cv2.COLOR_GRAY2BGR)
+                    if len(preprocessed.shape) == 2
+                    else preprocessed
+                )
+                results = self._paddle_ocr.ocr(paddle_input, cls=True)
                 lines = []
                 conf_list = []
                 if results and results[0]:

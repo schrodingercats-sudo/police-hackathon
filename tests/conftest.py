@@ -114,7 +114,7 @@ DELHI_NCR_CAMERAS = [
         "status": "active"
     },
     {
-        "id": "CAM_DEL_004",
+        "id": "CAM_NOIDA_001",
         "name": "DND Toll Plaza Camera #4",
         "latitude": 28.5820,
         "longitude": 77.3100,
@@ -124,7 +124,7 @@ DELHI_NCR_CAMERAS = [
         "status": "active"
     },
     {
-        "id": "CAM_DEL_005",
+        "id": "CAM_NOIDA_002",
         "name": "Noida Expressway Sector 128 Camera #5",
         "latitude": 28.5020,
         "longitude": 77.4000,
@@ -134,12 +134,12 @@ DELHI_NCR_CAMERAS = [
         "status": "active"
     },
     {
-        "id": "CAM_DEL_006",
+        "id": "CAM_GRNOIDA_001",
         "name": "Pari Chowk Junction Camera #6",
         "latitude": 28.4650,
         "longitude": 77.5100,
-        "road_name": "Pari Chowk Circle, Greater Noida",
-        "direction_bearing": 150.0,
+        "road_name": "Pari Chowk Roundabout, Greater Noida",
+        "direction_bearing": 155.0,
         "camera_type": "junction",
         "status": "active"
     },
@@ -249,7 +249,7 @@ def synthetic_bgr_frame():
 # ============================================================================
 
 @pytest.fixture(scope="function")
-def test_client(db_session):
+def test_client(db_session, db_engine):
     """FastAPI TestClient with database session override."""
     try:
         from fastapi.testclient import TestClient
@@ -260,6 +260,18 @@ def test_client(db_session):
             from stolen_vehicle_ai.backend.main import app
             from stolen_vehicle_ai.backend.database.session import get_db
 
+        try:
+            import backend.services.audit_service as audit_service_mod
+        except ImportError:
+            try:
+                import stolen_vehicle_ai.backend.services.audit_service as audit_service_mod
+            except ImportError:
+                audit_service_mod = None
+
+        orig_audit_session = audit_service_mod.SessionLocal if audit_service_mod else None
+        if audit_service_mod and db_engine:
+            audit_service_mod.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
+
         def override_get_db():
             try:
                 yield db_session
@@ -267,8 +279,12 @@ def test_client(db_session):
                 pass
 
         app.dependency_overrides[get_db] = override_get_db
-        with TestClient(app) as client:
-            yield client
-        app.dependency_overrides.clear()
+        try:
+            with TestClient(app) as client:
+                yield client
+        finally:
+            app.dependency_overrides.clear()
+            if audit_service_mod and orig_audit_session:
+                audit_service_mod.SessionLocal = orig_audit_session
     except Exception as e:
         pytest.skip(f"FastAPI app or TestClient not available: {e}")

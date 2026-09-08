@@ -57,7 +57,7 @@ def start_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
         sys.exit(1)
 
 
-def seed_database(reset: bool = True):
+def seed_database(reset: bool = False):
     """Initializes and seeds database with Delhi NCR cameras, vehicles, and test cases."""
     print(BANNER)
     print(f"[*] Initializing and seeding database (reset={reset})...")
@@ -163,11 +163,12 @@ Examples:
     parser.add_argument("--reload", action="store_true", help="Enable live auto-reload for development")
 
     # Seed options
+    parser.add_argument("--reset", action="store_true", help="Drop existing tables before seeding (WARNING: wipes data)")
     parser.add_argument("--no-reset", action="store_true", help="Do not drop existing tables before seeding")
 
     # Simulation options
-    parser.add_argument("--cameras", type=int, default=6, help="Number of cameras to simulate (default: 6)")
-    parser.add_argument("--frames", type=int, default=10, help="Frames per camera (default: 10)")
+    parser.add_argument("--cameras", type=int, default=6, help="Number of cameras to simulate (1 to 6, default: 6)")
+    parser.add_argument("--frames", type=int, default=10, help="Frames per camera (min 1, default: 10)")
     parser.add_argument("--video", action="store_true", help="Save output video feeds (.mp4)")
     parser.add_argument("--no-db", action="store_true", help="Do not insert simulation records into database")
 
@@ -176,8 +177,13 @@ Examples:
     if args.server:
         start_server(host=args.host, port=args.port, reload=args.reload)
     elif args.seed:
-        seed_database(reset=not args.no_reset)
+        should_reset = args.reset and not args.no_reset
+        seed_database(reset=should_reset)
     elif args.simulate:
+        if args.cameras < 1 or args.cameras > 6:
+            parser.error("--cameras must be between 1 and 6.")
+        if args.frames < 1:
+            parser.error("--frames must be at least 1.")
         run_simulation(
             cameras=args.cameras,
             frames_per_camera=args.frames,

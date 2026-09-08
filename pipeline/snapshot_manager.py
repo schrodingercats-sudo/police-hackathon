@@ -22,8 +22,20 @@ class SnapshotManager:
     Saves vehicle and license plate image crops and calculates immutable SHA-256 checksums.
     """
 
-    def __init__(self, base_dir: str = "data/evidence"):
-        self.base_dir = Path(base_dir)
+    def __init__(self, base_dir: Optional[Any] = None):
+        if base_dir is None:
+            try:
+                from backend.config import settings
+                self.base_dir = settings.EVIDENCE_DIR
+            except ImportError:
+                try:
+                    from stolen_vehicle_ai.backend.config import settings
+                    self.base_dir = settings.EVIDENCE_DIR
+                except ImportError:
+                    self.base_dir = Path("data/evidence").resolve()
+        else:
+            self.base_dir = Path(base_dir).resolve()
+
         self.frames_dir = self.base_dir / "frames"
         self.crops_dir = self.base_dir / "crops"
         self.plates_dir = self.base_dir / "plates"
@@ -96,7 +108,9 @@ class SnapshotManager:
             plate_filename = f"{prefix}_plate.jpg"
             plate_full_path = self.plates_dir / plate_filename
             cv2.imwrite(str(plate_full_path), plate_crop, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
-            plate_path_str = str(plate_full_path).replace("\\", "/")
+            # Also save to crops dir for web serving
+            cv2.imwrite(str(self.crops_dir / plate_filename), plate_crop, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+            plate_path_str = f"/data/evidence/crops/{plate_filename}"
             plate_hash_str = self.compute_sha256(plate_crop)
 
         # 3. Save full frame if present
@@ -106,15 +120,23 @@ class SnapshotManager:
             frame_filename = f"{prefix}_frame.jpg"
             frame_full_path = self.frames_dir / frame_filename
             cv2.imwrite(str(frame_full_path), full_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-            frame_path_str = str(frame_full_path).replace("\\", "/")
+            frame_path_str = f"/data/evidence/frames/{frame_filename}"
             frame_hash_str = self.compute_sha256(full_frame)
 
         crop_path_str = str(crop_full_path).replace("\\", "/")
+        plate_path_str = str(plate_full_path).replace("\\", "/") if plate_crop is not None and plate_crop.size > 0 else None
+        frame_path_str = str(frame_full_path).replace("\\", "/") if full_frame is not None and full_frame.size > 0 else None
 
         return {
             "crop_image_path": crop_path_str,
             "plate_crop_path": plate_path_str,
-            "frame_image_path": frame_path_str if frame_path_str else crop_path_str,
+            "frame_image_path": frame_path_str,
+            "crop_url": f"/data/evidence/crops/{crop_filename}",
+            "plate_crop_url": f"/data/evidence/crops/{plate_filename}" if plate_path_str else None,
+            "frame_url": f"/data/evidence/frames/{frame_filename}" if frame_path_str else None,
+            "crop_full_path": str(crop_full_path),
+            "plate_full_path": str(plate_full_path) if plate_crop is not None and plate_crop.size > 0 else None,
+            "frame_full_path": str(frame_full_path) if full_frame is not None and full_frame.size > 0 else None,
             "sha256_hash": crop_hash,
             "crop_hash": crop_hash,
             "plate_hash": plate_hash_str,

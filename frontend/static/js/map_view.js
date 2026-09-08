@@ -464,12 +464,31 @@ const MapView = (function () {
     tileLayers[layerType].addTo(map);
   }
 
+  /**
+   * Pan and zoom map to coordinates (lat, lon)
+   */
+  function panToLocation(lat, lon, zoom = 15) {
+    if (!map || lat == null || lon == null) return;
+    map.setView([lat, lon], zoom, { animate: true, duration: 0.8 });
+  }
+
+  /**
+   * Recalculate map container size after layout shifts
+   */
+  function invalidateSize() {
+    if (map) {
+      map.invalidateSize();
+    }
+  }
+
   return {
     initMap,
     plotCameras,
     plotTheftOrigin,
     plotRoute,
     highlightWaypoint,
+    panToLocation,
+    invalidateSize,
     fitRouteBounds,
     toggleLayer,
     switchBaseLayer

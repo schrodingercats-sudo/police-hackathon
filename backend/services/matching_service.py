@@ -204,7 +204,14 @@ def compute_composite_matching_score(
 
     color_score = 0.0
     if reported_color and sighting_color:
-        color_score = 1.0 if str(reported_color).strip().lower() == str(sighting_color).strip().lower() else 0.0
+        rc = str(reported_color).strip().lower()
+        sc = str(sighting_color).strip().lower()
+        if rc == sc or rc in sc or sc in rc:
+            color_score = 1.0
+        elif rc in ("silver", "grey", "gray") and sc in ("silver", "grey", "gray", "silver/grey"):
+            color_score = 1.0
+        else:
+            color_score = 0.0
     elif not reported_color or not sighting_color:
         color_score = 0.5
 

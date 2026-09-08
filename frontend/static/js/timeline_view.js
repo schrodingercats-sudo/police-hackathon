@@ -103,9 +103,9 @@ const TimelineView = (function () {
     const speedKmh = wp.speed_from_prev_kmh;
     const isFeasible = wp.is_spatially_feasible !== false;
 
-    // Truncated SHA-256
-    const fullHash = wp.sha256_hash || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
-    const truncHash = `${fullHash.substring(0, 10)}...${fullHash.substring(fullHash.length - 8)}`;
+    // SHA-256 Digest handling
+    const fullHash = wp.sha256_hash && wp.sha256_hash !== 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' ? wp.sha256_hash : null;
+    const truncHash = fullHash ? `${fullHash.substring(0, 10)}...${fullHash.substring(fullHash.length - 8)}` : 'NO DIGEST';
 
     inner.innerHTML = `
       <!-- Header -->
@@ -150,9 +150,13 @@ const TimelineView = (function () {
       <!-- Section 65B Hash Chip -->
       <div class="sighting-sha-chip" title="Section 65B Bit-Exact SHA-256 Forensic Digest">
         <span><strong style="color: #64748b;">SHA-256:</strong> ${truncHash}</span>
-        <button class="copy-hash-btn" title="Copy Complete SHA-256 Digest" data-hash="${fullHash}">
-          <i class="fa-regular fa-copy"></i> Copy
-        </button>
+        ${
+          fullHash
+            ? `<button class="copy-hash-btn" title="Copy Complete SHA-256 Digest" data-hash="${fullHash}">
+                <i class="fa-regular fa-copy"></i> Copy
+              </button>`
+            : ''
+        }
       </div>
 
       <!-- Officer Verification Actions -->

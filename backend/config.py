@@ -18,7 +18,12 @@ class Settings(BaseSettings):
     # Server configuration
     HOST: str = "0.0.0.0"
     PORT: int = 8000
-    CORS_ORIGINS: List[str] = ["*"]
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
     # Database configuration
     # Default to local SQLite database; can be overridden via DATABASE_URL env var
@@ -46,7 +51,7 @@ class Settings(BaseSettings):
 
     # Evidence & Forensic Compliance
     SECTION_65B_HASH_ALGORITHM: str = "sha256"
-    SYSTEM_SALT: str = "delhi-police-cctns-sighting-v1"
+    SYSTEM_SALT: str = os.environ.get("SYSTEM_SALT", "delhi-police-cctns-sighting-v1")
 
     model_config = SettingsConfigDict(
         env_file=".env",

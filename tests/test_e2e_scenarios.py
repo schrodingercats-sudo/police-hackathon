@@ -76,8 +76,13 @@ class TestEndToEndPolicePursuitScenario:
         assert case_obj.id is not None
         assert case_obj.status == CaseStatus.OPEN
 
-        # Fetch 6 Delhi NCR Cameras
-        cameras = populated_db.query(Camera).order_by(Camera.id).all()
+        # Fetch 6 Delhi NCR Cameras in geographical corridor sequence
+        corridor_cam_ids = [
+            "CAM_DEL_001", "CAM_DEL_002", "CAM_DEL_003",
+            "CAM_NOIDA_001", "CAM_NOIDA_002", "CAM_GRNOIDA_001",
+        ]
+        cam_map = {c.id: c for c in populated_db.query(Camera).all()}
+        cameras = [cam_map[cid] for cid in corridor_cam_ids if cid in cam_map]
         assert len(cameras) == 6
 
         # -------------------------------------------------------------------------

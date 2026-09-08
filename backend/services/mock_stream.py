@@ -1176,6 +1176,7 @@ class SyntheticStreamGenerator:
         frames_per_camera: int = 10,
         save_video: bool = False,
         insert_to_db: bool = True,
+        db: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         Executes full synthetic generation across the Delhi NCR corridor.
@@ -1197,7 +1198,7 @@ class SyntheticStreamGenerator:
         # Database Insertion if requested
         db_inserted_count = 0
         if insert_to_db:
-            db_inserted_count = self.populate_database_sightings(all_camera_configs, all_sightings)
+            db_inserted_count = self.populate_database_sightings(all_camera_configs, all_sightings, db=db)
 
         summary = {
             "total_cameras": len(all_camera_configs),
@@ -1218,12 +1219,16 @@ class SyntheticStreamGenerator:
         self,
         camera_configs: List[CameraNodeConfig],
         sightings: List[Dict[str, Any]],
+        db: Optional[Any] = None,
     ) -> int:
         """
         Populates SQLAlchemy database with cameras, vehicles, sightings, cases, and matches.
         """
-        init_db()
-        db = SessionLocal()
+        close_db = False
+        if db is None:
+            init_db()
+            db = SessionLocal()
+            close_db = True
         inserted_count = 0
 
         try:
@@ -1361,7 +1366,8 @@ class SyntheticStreamGenerator:
             logger.error(f"Error populating database with synthetic sightings: {e}", exc_info=True)
             raise
         finally:
-            db.close()
+            if close_db and db is not None:
+                db.close()
 
         return inserted_count
 
@@ -1376,6 +1382,7 @@ def generate_synthetic_streams(
     save_video: bool = False,
     insert_to_db: bool = True,
     output_dir: Optional[Path] = None,
+    db: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Convenience functional interface to trigger synthetic stream generation."""
     generator = SyntheticStreamGenerator(output_dir=output_dir)
@@ -1384,6 +1391,7 @@ def generate_synthetic_streams(
         frames_per_camera=frames_per_camera,
         save_video=save_video,
         insert_to_db=insert_to_db,
+        db=db,
     )
 
 

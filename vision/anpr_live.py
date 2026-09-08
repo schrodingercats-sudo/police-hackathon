@@ -162,8 +162,8 @@ class LiveANPRProcessor:
                 if 2.0 <= aspect_ratio <= 6.0 and w > 60 and h > 15:
                     plate_crop = frame[y:y+h, x:x+w].copy()
                     results.append({
-                        'plate_text': 'DETECTED',
-                        'confidence': 0.5,
+                        'plate_text': 'UNREADABLE',
+                        'confidence': 0.3,
                         'bbox': [x, y, x+w, y+h],
                         'plate_crop': plate_crop,
                     })
